@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agronomist Data System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f9f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        input, select, button {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .report-section {
+            margin-top: 30px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            margin: 20px 0;
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mwea Agronomist Data System</h1>
+        
+        <!-- Data Entry Form -->
+        <div class="form-group">
+            <h2>Data Entry</h2>
+            <select id="region">
+                <option value="">Select Region</option>
+                <option value="Mwea">Mwea</option>
+                <option value="Nanyuki">Nanyuki</option>
+                <option value="Rupingazi">Rupingazi</option>
+            </select>
+            <input type="text" id="newRegion" placeholder="Add New Region">
+            
+            <select id="crop">
+                <option value="">Select Crop</option>
+                <option value="Finebeans">Finebeans</option>
+                <option value="Babycorn">Babycorn</option>
+                <option value="Mangetout">Mangetout</option>
+            </select>
+            <input type="text" id="newCrop" placeholder="Add New Crop">
+            
+            <input type="date" id="harvestDate">
+            <input type="number" id="projectedYield" placeholder="Projected Yield (kg)">
+            <select id="unit">
+                <option value="kg">Kilograms</option>
+                <option value="tons">Tons</option>
+            </select>
+            
+            <button onclick="addEntry()">Add Entry</button>
+        </div>
+
+        <!-- Report Section -->
+        <div class="report-section">
+            <h2>Agricultural Report</h2>
+            <button onclick="generateReport()">Generate Report</button>
+            <div id="reportOutput"></div>
+            <div class="grid-container">
+                <div class="chart-container">
+                    <canvas id="regionChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="cropChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let agriculturalData = JSON.parse(localStorage.getItem('agroData')) || [];
+        let regionChart, cropChart;
+
+        function addEntry() {
+            const region = document.getElementById('region').value || 
+                         document.getElementById('newRegion').value;
+            const crop = document.getElementById('crop').value || 
+                        document.getElementById('newCrop').value;
+            const harvestDate = document.getElementById('harvestDate').value;
+            const projectedYield = document.getElementById('projectedYield').value;
+            const unit = document.getElementById('unit').value;
+
+            if (!region || !crop || !harvestDate || !projectedYield) {
+                alert('Please fill all required fields');
+                return;
+            }
+
+            agriculturalData.push({
+                region,
+                crop,
+                harvestDate,
+                projectedYield: parseFloat(projectedYield),
+                unit,
+                timestamp: new Date().toISOString()
+            });
+
+            localStorage.setItem('agroData', JSON.stringify(agriculturalData));
+            clearForm();
+        }
+
+        function generateReport() {
+            const reportOutput = document.getElementById('reportOutput');
+            let html = `<h3>Agricultural Production Report - ${new Date().toLocaleDateString()}</h3>`;
+            
+            // Destroy existing charts if they exist
+            if(regionChart) regionChart.destroy();
+            if(cropChart) cropChart.destroy();
+
+            // Summary Statistics
+            const summary = agriculturalData.reduce((acc, entry) => {
+                acc.totalYield += entry.projectedYield;
+                acc.regions.add(entry.region);
+                acc.crops.add(entry.crop);
+                return acc;
+            }, { 
+                totalYield: 0,
+                regions: new Set(),
+                crops: new Set()
+            });
+
+            html += `<p>Total Projected Yield: ${summary.totalYield.toFixed(2)} kg</p>`;
+            html += `<p>Regions: ${Array.from(summary.regions).join(', ')}</p>`;
+            html += `<p>Crops: ${Array.from(summary.crops).join(', ')}</p>`;
+
+            // Prepare data for charts
+            const regionData = {};
+            const cropData = {};
+
+            agriculturalData.forEach(entry => {
+                regionData[entry.region] = (regionData[entry.region] || 0) + entry.projectedYield;
+                cropData[entry.crop] = (cropData[entry.crop] || 0) + entry.projectedYield;
+            });
+
+            // Create charts
+            const regionCtx = document.getElementById('regionChart').getContext('2d');
+            const cropCtx = document.getElementById('cropChart').getContext('2d');
+
+            regionChart = new Chart(regionCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(regionData),
+                    datasets: [{
+                        label: 'Yield by Region (kg)',
+                        data: Object.values(regionData),
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.6)',
+                            'rgba(255, 159, 64, 0.6)',
+                            'rgba(153, 102, 255, 0.6)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            cropChart = new Chart(cropCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(cropData),
+                    datasets: [{
+                        label: 'Crop Distribution',
+                        data: Object.values(cropData),
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 206, 86, 0.6)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            reportOutput.innerHTML = html;
+        }
+
+        function clearForm() {
+            document.getElementById('region').value = '';
+            document.getElementById('newRegion').value = '';
+            document.getElementById('crop').value = '';
+            document.getElementById('newCrop').value = '';
+            document.getElementById('harvestDate').value = '';
+            document.getElementById('projectedYield').value = '';
+        }
+    </script>
+</body>
+</html>
